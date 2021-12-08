@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/bastianpahlke/go-test.git/types"
@@ -26,9 +25,8 @@ func getDataForUser() gin.HandlerFunc {
 
 		get := fmt.Sprintf("https://jsonplaceholder.typicode.com/users/%s", userId)
 		go SendGetAsync(get, userChan)
-		body, _ := json.Marshal("")
 		post := fmt.Sprintf("https://jsonplaceholder.typicode.com/posts?userId=%s", userId)
-		go SendPostAsync(post, body, dataChan)
+		go SendGetAsync(post, dataChan)
 
 		userResponse := <- userChan
 		defer userResponse.Body.Close()
@@ -38,34 +36,33 @@ func getDataForUser() gin.HandlerFunc {
 
 		dataResponse := <- dataChan
 		defer dataResponse.Body.Close()
-		dataBytes, _ := ioutil.ReadAll(dataResponse.Body)
-		var posts []types.HtmlData
-		json.Unmarshal(dataBytes, &posts)
+		dataBytes, err := ioutil.ReadAll(dataResponse.Body)
 
-		size := len(posts)
+		if err != nil {
 
-		var htmlData types.HtmlData
-		if size > 0 {
-			htmlData = posts[size - 1]
+			c.String(http.StatusOK, "Data for user %s: \n Username: %s \n Email: %s \n \n Last Post: %s #%d \n %s",
+				userId, user.Username, user.Email, "Dummy title", 0, "No body")
 		} else {
-			htmlData = types.HtmlData {
-				Id: 0,
-				Title: "Dummy Title",
-				Body: "Dummy",
+			var posts []types.HtmlData
+			json.Unmarshal(dataBytes, &posts)
+
+			size := len(posts)
+
+			var htmlData types.HtmlData
+			if size > 0 {
+				htmlData = posts[size - 1]
+			} else {
+				htmlData = types.HtmlData {
+					Id: 0,
+					Title: fmt.Sprintf("raw: (%s)\n", string(dataBytes)),
+					Body: "If you see this, something went wrong",
+				}
 			}
+
+			c.String(http.StatusOK, "Data for user %s: \nUsername: %s \nEmail: %s \n \nLast Post: %s (#%d) \n\n%s",
+				userId, user.Username, user.Email, htmlData.Title, htmlData.Id, htmlData.Body)
 		}
-
-		c.String(http.StatusOK, "Data for user %s: \n Username: %s \n Email: %s \n \n Last Post: %s #%d \n %s", userId, user.Username,
-			user.Email, htmlData.Title, htmlData.Id, htmlData.Body)
 	}
-}
-
-func SendPostAsync(url string, body []byte, rc chan *http.Response) {
-	response, err := http.Post(url, "application/json", bytes.NewReader(body))
-	if err != nil {
-		panic(err)
-	}
-	rc <- response
 }
 
 func SendGetAsync(url string, rc chan *http.Response) {
